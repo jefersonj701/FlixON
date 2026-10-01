@@ -7,7 +7,7 @@ const { rc, loadQbitJob } = require("../cache");
 const { resolvePrefs } = require("../configStore");
 const { isQbitEnabledForPrefs } = require("../routeHelpers");
 const { torrentDownloadRecentlyFailed, markTorrentDownloadFailed } = require("../torrentUtils");
-const { torboxAddTorrent, resolveDebridStream, rdAddTorrent } = require("../debrid");
+const { torboxAddTorrent, resolveDebridStream, rdAddTorrent, pickNativeVideoFile } = require("../debrid");
 const { injectTrackers } = require("../torrentEnrich");
 const logger = require("../logger");
 
@@ -17,6 +17,20 @@ const router = express.Router();
 // endpoints de streaming local não devem ser acessíveis mesmo que conhecidos.
 function qbitFeatureEnabled() {
   return ENV.enableQbit === true;
+}
+
+// Seleciona o arquivo de VÍDEO correto entre files do StremThru/TorBox (on-demand).
+// stData.files/torrent.files podem ter .url/.png primeiro → player falha.
+function pickVideo(stFiles) {
+  if (!Array.isArray(stFiles) || !stFiles.length) return stFiles?.[0] || null;
+  const norm = stFiles.map((f, i) => ({
+    id: String(f.index ?? f.id ?? i),
+    name: String(f.name || f.filename || ""),
+    size: Number(f.size || f.length || 0) || 0,
+    raw: f,
+  }));
+  const picked = pickNativeVideoFile(norm, null, null, false);
+  return picked ? picked.raw : stFiles[0];
 }
 
 router.get("/:userConfig/debrid-add/:provider/:infoHash", async (req, res) => {
@@ -106,7 +120,9 @@ router.get("/:userConfig/debrid-add/:provider/:infoHash", async (req, res) => {
         } else {
            const stData = addRes.data?.data;
            if (stData && (stData.status === "downloaded" || (stData.files && stData.files.length > 0))) {
-              const selectedFile = requestedFileId ? stData.files.find(f => String(f.index) === String(requestedFileId)) : stData.files[0];
+              const selectedFile = requestedFileId
+                ? stData.files.find(f => String(f.index) === String(requestedFileId))
+                : pickVideo(stData.files);
               if (selectedFile?.link) {
                  const linkRes = await axios.post(`${stUrl}/v0/store/link/generate`, { link: selectedFile.link }, { headers, validateStatus: () => true });
                  if (linkRes.data?.data?.link) {
@@ -225,7 +241,7 @@ async function pollStremThru(res, stUrl, stStoreName, stToken, infoHash, request
 
     if (torrent && (torrent.status === "downloaded" || (torrent.files && torrent.files.length > 0))) {
       logger.debug(`[ON-DEMAND] StremThru pronto! Gerando link...`);
-      const selectedFile = requestedFileId ? torrent.files.find(f => String(f.index) === String(requestedFileId)) : torrent.files[0];
+      const selectedFile = requestedFileId ? torrent.files.find(f => String(f.index) === String(requestedFileId)) : pickVideo(torrent.files);
       if (selectedFile?.link) {
         const linkRes = await axios.post(`${stUrl}/v0/store/link/generate`, { link: selectedFile.link }, { headers, validateStatus: () => true });
         if (linkRes.data?.data?.link) return linkRes.data.data.link;

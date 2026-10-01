@@ -4,6 +4,59 @@ const axios = require("axios");
 const { injectTrackers } = require("./torrentEnrich");
 const logger = require("./logger");
 
+// Extensões de vídeo reproduzíveis, usadas para escolher o arquivo correto no debrid nativo.
+const NATIVE_VIDEO_RE = /\.(mkv|mp4|avi|ts|m2ts|mov|wmv|webm)$/i;
+// Extensões claramente não-vídeo que costumam vir no torrent (.url, .png, .nfo...).
+const NATIVE_NON_VIDEO_RE = /\.(url|lnk|png|jpe?g|gif|bmp|nfo|txt|md|torrent|zip|rar|7z|iso|exe)$/i;
+
+// Escolhe o melhor arquivo de vídeo de uma lista {id,name,size}. Para filmes: maior
+// vídeo. Para séries/anime: episódio correspondente (por nome). Nunca retorna
+// arquivos claramente não-vídeo, a menos que não exista alternativa.
+function pickNativeVideoFile(files, season, episode, isAnime) {
+  if (!Array.isArray(files) || !files.length) return null;
+
+  const normalize = f => ({
+    id: f.id,
+    name: String(f.filename || f.name || f.path || "").replace(/\//g, "").trim(),
+    size: Number(f.filesize || f.size || f.bytes || f.length || 0) || 0,
+  });
+  const all = files.map(normalize).filter(f => f.id != null || f.name);
+
+  if (season != null && episode != null) {
+    const byEp = all.find(f => {
+      const n = f.name;
+      if (isAnime) return new RegExp(`(?:^|[-\\s._\\[])0*${episode}(?:v\\d+)?[\\s\\[\\(_.-]`).test(n);
+      return new RegExp(`s0*${season}[\\s._-]*e0*${episode}\\b`, "i").test(n);
+    });
+    if (byEp && !NATIVE_NON_VIDEO_RE.test(byEp.name)) return byEp;
+  }
+
+  const videos = all.filter(f => NATIVE_VIDEO_RE.test(f.name));
+  if (videos.length) return videos.reduce((a, b) => (b.size > a.size ? b : a));
+  const notNonVideo = all.filter(f => !NATIVE_NON_VIDEO_RE.test(f.name));
+  if (notNonVideo.length) return notNonVideo.reduce((a, b) => (b.size > a.size ? b : a));
+  return all.reduce((a, b) => (b.size > a.size ? b : a));
+}
+
+// A partir da resposta /torrents/info do Real-Debrid, escolhe o link de vídeo
+// correto (os links são retornados na mesma ordem de files selecionados).
+function pickRdVideoLink(info) {
+  const links = Array.isArray(info?.links) ? info.links : [];
+  const files = Array.isArray(info?.files) ? info.files : [];
+  if (!links.length) return null;
+
+  if (files.length) {
+    const selected = files
+      .map((f, i) => ({ ...f, idx: i, link: links[i] }))
+      .filter(f => f.link && f.selected !== false);
+    const picked = pickNativeVideoFile(selected, null, null, false);
+    if (picked) return picked.link;
+  }
+  const byRe = links.find(l => NATIVE_VIDEO_RE.test(String(l || "")));
+  if (byRe) return byRe;
+  return links.find(l => !NATIVE_NON_VIDEO_RE.test(String(l || ""))) || links[0];
+}
+
 function buildMagnet(infoHash, existingMagnet, title) {
   if (existingMagnet && existingMagnet.startsWith("magnet:")) return existingMagnet;
   const trackers = [
@@ -236,8 +289,11 @@ async function rdGetDirectLink(hash, magnet, fileIds, key, torrentBuffer = null)
       }
     );
     if (getRes.status < 400 && getRes.data?.links?.length) {
-      const dl = getRes.data.links[0];
-      return { download: dl };
+      // FIX (debrid nativo): links[0] podia ser .url/.png/.nfo → player falha.
+      // Escolhe o link de VÍDEO correto (por extensão/nome, com fallback).
+      const dl = pickRdVideoLink(getRes.data);
+      if (dl) return { download: dl };
+      return { download: getRes.data.links[0] };
     }
   } catch {}
 
@@ -442,9 +498,14 @@ async function resolveRDStream(infoHash, magnet, season, episode, isAnime, key, 
 
   if (season != null && episode != null) {
     const matchedFile = findBestFileMatch(variant, season, episode, isAnime);
-    if (!matchedFile) return { queued: true, cached: true };
-    const link = await rdGetDirectLink(infoHash, magnet, [matchedFile.id], key, buffer);
-    if (link?.download) return { url: link.download, filename: matchedFile.filename };
+    if (matchedFile) {
+      const link = await rdGetDirectLink(infoHash, magnet, [matchedFile.id], key, buffer);
+      if (link?.download) return { url: link.download, filename: matchedFile.filename };
+    }
+    // Variant é "all" (sem lista de arquivos): seleciona tudo e o pickRdVideoLink
+    // escolhe o vídeo do episódio — evita quebrar séries cujo cache veio só com "all".
+    const link = await rdGetDirectLink(infoHash, magnet, ["all"], key, buffer);
+    if (link?.download) return { url: link.download, filename: variant?.all?.filename || "" };
     return { queued: true, cached: true };
   }
 
@@ -521,12 +582,28 @@ async function resolveTBStream(infoHash, magnet, season, episode, isAnime, key, 
 }
 
 function pickTBFile(variant, season, episode, isAnime) {
+  // Converte o variant {id:{filename,filesize}} em lista normalizada p/ fallback de vídeo.
+  const entries = Object.entries(variant || {}).map(([id, f]) => ({
+    id,
+    filename: String(f.filename || f.name || ""),
+    filesize: Number(f.filesize || f.size || 0) || 0,
+  }));
+
   if (season != null && episode != null) {
-    return findBestFileMatch(variant, season, episode, isAnime);
+    const matched = findBestFileMatch(variant, season, episode, isAnime);
+    if (matched) {
+      // Garante que o episódio encontrado seja vídeo; senão cai para o maior vídeo.
+      if (!NATIVE_NON_VIDEO_RE.test(String(matched.filename || "")) || NATIVE_VIDEO_RE.test(String(matched.filename || ""))) {
+        return matched;
+      }
+    }
+    const byVideo = pickNativeVideoFile(entries, season, episode, isAnime);
+    return byVideo ? { id: byVideo.id, filename: byVideo.name, filesize: byVideo.size } : null;
   }
-  const largest = Object.entries(variant)
-    .sort((a, b) => (b[1].filesize || 0) - (a[1].filesize || 0))[0];
-  return largest ? { id: largest[0], ...largest[1] } : null;
+
+  const picked = pickNativeVideoFile(entries, null, null, false);
+  if (!picked) return null;
+  return { id: picked.id, filename: picked.name, filesize: picked.size };
 }
 
 function findBestFileMatch(variant, season, episode, isAnime) {
@@ -557,5 +634,9 @@ module.exports = {
   torboxAddTorrent,
   torboxGetTorrentInfo,
   torboxBatchCheckCache,
-  resolveDebridStream
+  resolveDebridStream,
+  pickNativeVideoFile,
+  pickRdVideoLink,
+  NATIVE_VIDEO_RE,
+  NATIVE_NON_VIDEO_RE,
 };
