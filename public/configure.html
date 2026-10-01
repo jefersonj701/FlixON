@@ -132,10 +132,12 @@ input[type=number]{-moz-appearance:textfield}
 .debrid-panel{background:var(--muted);border:1px solid var(--bord);border-radius:var(--r);padding:14px;margin-bottom:12px;display:none}
 .debrid-panel.tb-panel{border-color:rgba(251,146,60,.2)}
 .debrid-panel.rd-panel{border-color:rgba(192,132,252,.2)}
+.debrid-panel.st-panel{border-color:rgba(108,143,255,.2)}
 .debrid-panel.qbit-panel{border-color:rgba(61,214,140,.2)}
 .panel-title{font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px}
 .panel-title.tb{color:var(--tb)}
 .panel-title.rd{color:var(--rd)}
+.panel-title.st{color:var(--accent)}
 .panel-title.qbit{color:var(--green)}
 
 /* ── Buttons ── */
@@ -409,6 +411,54 @@ hr{border:none;border-top:1px solid var(--bord);margin:14px 0}
         </div>
 
         <label style="display:flex;align-items:center;gap:9px;cursor:pointer;margin-bottom:10px">
+          <input type="checkbox" id="useStremThru" style="width:15px;height:15px;accent-color:var(--amber)" onchange="toggleDebridMode('st')"/>
+          <span style="font-size:13px;font-weight:500">Proxy Debrid via StremThru <span style="font-size:11px;background:rgba(108,143,255,.18);color:#6c8fff;padding:2px 7px;border-radius:10px;margin-left:4px">Alternativo</span></span>
+        </label>
+        <div class="info" style="margin-left:24px;margin-bottom:10px">Alternativa ao debrid nativo. Use apenas se você conhece o servidor StremThru.</div>
+        <div class="debrid-panel st-panel" id="stremThruConfig">
+          <div class="panel-title st">StremThru</div>
+          <label class="lbl">URL</label>
+          <input type="text" id="stUrl" placeholder="URL do proxy StremThru" value="https://stremthru.13377001.xyz"/>
+          <hr/>
+          <div class="g2">
+            <div>
+              <label class="lbl">Serviço 1</label>
+              <select id="stStore1" class="sel">
+                <option value="torbox">TorBox</option>
+                <option value="realdebrid">Real-Debrid</option>
+                <option value="alldebrid">AllDebrid</option>
+                <option value="premiumize">Premiumize</option>
+                <option value="debridlink">Debrid-Link</option>
+                <option value="offcloud">Offcloud</option>
+              </select>
+            </div>
+            <div>
+              <label class="lbl">Token 1 <span style="color:var(--red)">*</span></label>
+              <input type="text" id="stToken1" placeholder="Obrigatório" style="margin-bottom:0"/>
+            </div>
+          </div>
+          <hr/>
+          <div class="g2">
+            <div>
+              <label class="lbl">Serviço 2 <span style="color:var(--dim)">(opcional)</span></label>
+              <select id="stStore2" class="sel">
+                <option value="">-- Nenhum --</option>
+                <option value="torbox">TorBox</option>
+                <option value="realdebrid">Real-Debrid</option>
+                <option value="alldebrid">AllDebrid</option>
+                <option value="premiumize">Premiumize</option>
+                <option value="debridlink">Debrid-Link</option>
+                <option value="offcloud">Offcloud</option>
+              </select>
+            </div>
+            <div>
+              <label class="lbl">Token 2</label>
+              <input type="text" id="stToken2" placeholder="Opcional" style="margin-bottom:0"/>
+            </div>
+          </div>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:9px;cursor:pointer;margin-bottom:10px">
           <input type="checkbox" id="enableP2P" style="width:15px;height:15px;accent-color:var(--amber)" onchange="toggleQbitMode()"/>
           <span style="font-size:13px;font-weight:500">qBittorrent HTTP</span>
         </label>
@@ -539,8 +589,16 @@ function applyPrefsToForm(prefs) {
 
   if (prefs.debridConfig) {
     document.getElementById('useNativeDebrid').checked = true;
+    document.getElementById('useStremThru').checked = false;
     document.getElementById('tbKey').value = prefs.debridConfig.torboxKey || '';
     document.getElementById('rdKey').value = prefs.debridConfig.rdKey || '';
+  } else if (prefs.stConfig) {
+    document.getElementById('useStremThru').checked = true;
+    document.getElementById('useNativeDebrid').checked = false;
+    document.getElementById('stUrl').value = prefs.stConfig.url || 'https://stremthru.13377001.xyz';
+    const stores = Array.isArray(prefs.stConfig.stores) ? prefs.stConfig.stores : [];
+    if (stores[0]) { document.getElementById('stStore1').value = stores[0].c || 'torbox'; document.getElementById('stToken1').value = stores[0].t || ''; }
+    if (stores[1]) { document.getElementById('stStore2').value = stores[1].c || ''; document.getElementById('stToken2').value = stores[1].t || ''; }
   }
   toggleDebridMode();
 }
@@ -561,9 +619,15 @@ function selectLang(el) {
 }
 
 // ── Debrid toggles ────────────────────────────────────────────────
-function toggleDebridMode() {
+function toggleDebridMode(changed) {
   const nativeEl = document.getElementById('useNativeDebrid');
+  const stEl = document.getElementById('useStremThru');
+  // Nativos e StremThru são mutuamente exclusivos (modos de execução distintos).
+  if (changed === 'st' && stEl.checked) nativeEl.checked = false;
+  if (changed === 'native' && nativeEl.checked) stEl.checked = false;
   document.getElementById('nativeDebridConfig').style.display = nativeEl.checked ? 'block' : 'none';
+  const stPanel = document.getElementById('stremThruConfig');
+  if (stPanel) stPanel.style.display = stEl.checked ? 'block' : 'none';
 }
 function toggleQbitMode() {
   document.getElementById('qbitModeConfig').style.display = document.getElementById('enableP2P').checked ? 'block' : 'none';
@@ -722,7 +786,8 @@ function filterIx(q) {
 
 // ── Build prefs ───────────────────────────────────────────────────
 function buildPrefs() {
-  const isNative = document.getElementById('useNativeDebrid').checked;
+  const isStremThru = document.getElementById('useStremThru').checked;
+  const isNative   = !isStremThru && document.getElementById('useNativeDebrid').checked;
   const accessToken = document.getElementById('accessToken').value.trim();
 
   const prefs = {
@@ -735,7 +800,7 @@ function buildPrefs() {
     onlyDubbed: document.getElementById('onlyLangBtn').classList.contains('on'),
     dedupe: document.getElementById('dedupeBtn').classList.contains('on'),
     enableCatalog: document.getElementById('enableCatalogBtn').classList.contains('on'),
-    debrid: isNative,
+    debrid: isNative || isStremThru,
     enableP2P: true,
     qbitMode: document.getElementById('enableP2P').checked ? (document.getElementById('qbitMode').value || 'private') : 'off',
     keywordBoost: document.getElementById('enableKeywordsBr').checked ? document.getElementById('keywordBoost').value.trim() : '',
@@ -756,7 +821,7 @@ function buildPrefs() {
     if (url) prefs.jackett = { url, key };
   }
 
-  // Debrid Nativo
+  // Debrid Nativo (recomendado)
   if (isNative) {
     const tbKey = document.getElementById('tbKey').value.trim();
     const rdKey = document.getElementById('rdKey').value.trim();
@@ -768,10 +833,23 @@ function buildPrefs() {
     };
   }
 
+  // StremThru (alternativo)
+  if (isStremThru) {
+    const stToken1 = document.getElementById('stToken1').value.trim();
+    if (!stToken1) throw new Error('stToken1_missing');
+    const stStore2 = document.getElementById('stStore2').value;
+    const stToken2 = document.getElementById('stToken2').value.trim();
+    const stores = [{ c: document.getElementById('stStore1').value, t: stToken1 }];
+    if (stStore2 && stToken2) stores.push({ c: stStore2, t: stToken2 });
+    prefs.stConfig = { url: document.getElementById('stUrl').value.trim().replace(/\/+$/,''), stores };
+  }
+
   // Nome do addon
   if (isNative && prefs.debridConfig) {
     const nameMap = { torbox: 'ProwJack [TB]', realdebrid: 'ProwJack [RD]', dual: 'ProwJack' };
     prefs.addonName = nameMap[prefs.debridConfig.mode] || 'ProwJack';
+  } else if (isStremThru) {
+    prefs.addonName = 'ProwJack [ST]';
   } else {
     prefs.addonName = 'ProwJack';
   }
@@ -811,6 +889,7 @@ async function generate(openManifest = false) {
     return finalUrl;
   } catch (err) {
     if (err.message === 'native_keys_missing') { toast('ERRO: Configure ao menos uma chave debrid!', 'err'); document.getElementById('tbKey').focus(); }
+    else if (err.message === 'stToken1_missing') { toast('ERRO: Token do Serviço 1 é obrigatório!', 'err'); document.getElementById('stToken1').focus(); }
     else { toast('Erro: ' + err.message, 'err'); }
     return null;
   }
