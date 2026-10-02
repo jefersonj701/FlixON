@@ -45,6 +45,25 @@ npm start              # http://localhost:7014/configure
 
 Para desenvolvimento com reload automático: `npm run dev`.
 
+### 2b. Docker Compose (recomendado p/ VPS/Docker)
+
+O repositório traz um [`compose.yml`](compose.yml) genérico (addon + Redis opcional):
+
+```bash
+cp .env.example .env   # preencha JACKETT_URL / JACKETT_API_KEY etc.
+docker compose up -d --build
+# UI em http://localhost:7014/configure
+```
+
+* No compose, o addon usa a porta interna `7860` (Dockerfile); ajuste a porta do host
+  em `ports` (ex.: `7014:7860`).
+* `REDIS_URL=redis://redis:6379` na rede interna (serviço `redis`).
+* `JACKETT_URL` deve apontar para o seu Prowlarr (ex.: `http://prowlarr:9696` se
+  estiver na mesma rede Docker).
+* As configs `cfg_...` persistem no volume `prowjack_data:/data`.
+* Para uso com qBittorrent, ajuste `QBIT_URL` para alcançar o qBit e monte o volume
+  de downloads (veja `.env.example`).
+
 ### 3. Variáveis de ambiente
 
 Veja [`.env.example`](.env.example) — comentado e completo.
