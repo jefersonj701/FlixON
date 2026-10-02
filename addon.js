@@ -74,3 +74,6 @@ app.listen(ENV.port, "0.0.0.0", () => {
     logger.info("[RSS] ENABLE_RSS_CATALOG=false — poller desabilitado.");
   }
 });
+
+module.exports = app;
+
