@@ -67,7 +67,8 @@ As mais importantes:
 |---|---|---|
 | `ENABLE_QBITTORRENT` | herdado da config | `false` = UI oculta e backend retorna 404 para qBittorrent. |
 | `ENABLE_RSS_CATALOG` | herdado de `RSS_CATALOG_INDEXERS` | `false` = sem catálogo RSS, sem poller. |
-| `ENABLE_PURE_P2P` | `true` | `false` = esconde stream P2P do Stremio (só debrid). |
+| `ENABLE_STREMTHRU` | `true` | `false` = oculta a opção StremThru na UI e descarta `stConfig` no backend. |
+| `ENABLE_PURE_P2P` | `true` | `false` = sem stream P2P; o manifest só é gerado se debrid nativo (ou StremThru) estiver configurado. |
 | `P2P_MIN_SEEDERS` | `5` | seeders mínimos para stream P2P não-cacheado. |
 | `RSS_CATALOG_INDEXERS` | vazio | IDs/nomes dos indexadores do catálogo RSS. |
 
@@ -119,6 +120,8 @@ Estas flags são aplicadas **na UI e no backend** — desabilitar não depende a
 | qBittorrent | funciona | geralmente indisponível (sem rede p/ 8080) |
 | `ENABLE_QBITTORRENT` | `true` p/ testes | `false` |
 | `ENABLE_RSS_CATALOG` | `true` se quiser | `false` |
+| `ENABLE_STREMTHRU` | `true` | `true` (ou `false` se não usar debrid via ST) |
+| `ENABLE_PURE_P2P` | `true` | `false` (exige debrid nativo p/ gerar manifest) |
 
 ---
 

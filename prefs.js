@@ -125,24 +125,29 @@ function sanitizeUserPrefs(input = {}) {
   }
 
   if (src.stConfig && typeof src.stConfig === "object" && !Array.isArray(src.stConfig)) {
-    const url = src.stConfig.url ? safeServiceUrl(src.stConfig.url) : "";
-    const allowedStores = new Set(["torbox", "realdebrid", "alldebrid", "premiumize", "debridlink", "offcloud"]);
-    const stores = (Array.isArray(src.stConfig.stores) ? src.stConfig.stores : [])
-      .map(store => ({
-        c: cleanString(store?.c, 40).toLowerCase(),
-        t: cleanString(store?.t, 1000),
-      }))
-      .filter(store => allowedStores.has(store.c) && store.t)
-      .slice(0, 2);
-    if (url && stores.length) {
-      out.stConfig = { url, stores };
-      out.debrid = true;
-      // StremThru and native debrid are mutually exclusive execution modes.
-      // If an old UI/config sends both, prefer ST and drop native keys so the
-      // stream route cannot mix native RD/TB cache checks with ST proxy output.
-      delete out.debridConfig;
-      out.enableP2P = true;
-      // We don't force qbitMode to 'private' here anymore. It remains whatever the user selected.
+    // Feature flag de servidor: ENABLE_STREMTHRU=false descarta stConfig no backend,
+    // não apenas oculta na UI (proteção em nível de instância pública).
+    const { ENV } = require("./constants");
+    if (ENV.enableStremThru === true) {
+      const url = src.stConfig.url ? safeServiceUrl(src.stConfig.url) : "";
+      const allowedStores = new Set(["torbox", "realdebrid", "alldebrid", "premiumize", "debridlink", "offcloud"]);
+      const stores = (Array.isArray(src.stConfig.stores) ? src.stConfig.stores : [])
+        .map(store => ({
+          c: cleanString(store?.c, 40).toLowerCase(),
+          t: cleanString(store?.t, 1000),
+        }))
+        .filter(store => allowedStores.has(store.c) && store.t)
+        .slice(0, 2);
+      if (url && stores.length) {
+        out.stConfig = { url, stores };
+        out.debrid = true;
+        // StremThru and native debrid are mutually exclusive execution modes.
+        // If an old UI/config sends both, prefer ST and drop native keys so the
+        // stream route cannot mix native RD/TB cache checks with ST proxy output.
+        delete out.debridConfig;
+        out.enableP2P = true;
+        // We don't force qbitMode to 'private' here anymore. It remains whatever the user selected.
+      }
     }
   }
 

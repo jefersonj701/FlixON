@@ -92,3 +92,47 @@ test("backend: isQbitEnabledForPrefs retorna false quando flag desabilitada", ()
     assert.equal(isQbitEnabledForPrefs({ qbitMode: "always", enableP2P: true }, null), false);
   } finally { restore(); }
 });
+
+test("ENABLE_STREMTHRU=false desabilita flag", () => {
+  const { constants, restore } = loadWith({ ENABLE_STREMTHRU: "false" });
+  try {
+    assert.equal(constants.ENV.enableStremThru, false);
+  } finally { restore(); }
+});
+
+test("ENABLE_STREMTHRU=true/ausente habilita (default preserva configs)", () => {
+  const a = loadWith({ ENABLE_STREMTHRU: "true" });
+  try { assert.equal(a.constants.ENV.enableStremThru, true); } finally { a.restore(); }
+  const b = loadWith({});
+  try { assert.equal(b.constants.ENV.enableStremThru, true); } finally { b.restore(); }
+});
+
+test("sanitizeUserPrefs descarta stConfig quando ENABLE_STREMTHRU=false", () => {
+  const { constants, restore } = loadWith({ ENABLE_STREMTHRU: "false" });
+  try {
+    delete require.cache[require.resolve(`${repo}/prefs`)];
+    const { sanitizeUserPrefs } = require(`${repo}/prefs`);
+    const out = sanitizeUserPrefs({ stConfig: { url: "https://st.xyz", stores: [{ c: "torbox", t: "tok" }] } });
+    assert.equal(out.stConfig, undefined);
+    assert.equal(out.debrid, false);
+  } finally { restore(); }
+});
+
+test("sanitizeUserPrefs mantém stConfig quando ENABLE_STREMTHRU habilitado", () => {
+  const { constants, restore } = loadWith({ ENABLE_STREMTHRU: "true" });
+  try {
+    delete require.cache[require.resolve(`${repo}/prefs`)];
+    const { sanitizeUserPrefs } = require(`${repo}/prefs`);
+    const out = sanitizeUserPrefs({ stConfig: { url: "https://st.xyz", stores: [{ c: "torbox", t: "tok" }] } });
+    assert.equal(!!out.stConfig, true);
+    assert.equal(out.stConfig.stores.length, 1);
+    assert.equal(out.debrid, true);
+  } finally { restore(); }
+});
+
+test("ENABLE_PURE_P2P=false desabilita P2P", () => {
+  const { constants, restore } = loadWith({ ENABLE_PURE_P2P: "false" });
+  try { assert.equal(constants.ENV.enablePureP2P, false); } finally { restore(); }
+  const f = loadWith({ ENABLE_PURE_P2P: "true" });
+  try { assert.equal(f.constants.ENV.enablePureP2P, true); } finally { f.restore(); }
+});

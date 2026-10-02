@@ -302,7 +302,9 @@ if (resolved.infoHash) {
 
 router.get("/:userConfig/stream/:type/:id.json", async (req, res) => {
   const prefs = await resolvePrefs(req.params.userConfig);
-  const isStremThruMode = !!(prefs.stConfig && Array.isArray(prefs.stConfig.stores) && prefs.stConfig.stores.length);
+  // ENABLE_STREMTHRU=false: ignora stConfig mesmo se persistido em config antiga.
+  const stModeAllowed = ENV.enableStremThru !== false;
+  const isStremThruMode = stModeAllowed && !!(prefs.stConfig && Array.isArray(prefs.stConfig.stores) && prefs.stConfig.stores.length);
   const qbitCreds = null;
   const qbitEnabledForPrefs = isQbitEnabledForPrefs(prefs, qbitCreds);
   const { type, id } = req.params;

@@ -29,6 +29,9 @@ const ENV = {
     parseInt(process.env.STREMTHRU_PROXY_TIMEOUT_MS || "60000", 10) || 60000
   ),
   enablePureP2P:   process.env.ENABLE_PURE_P2P !== "false",
+  enableRssCatalog: process.env.ENABLE_RSS_CATALOG != null
+    ? String(process.env.ENABLE_RSS_CATALOG).toLowerCase() !== "false"
+    : !!((process.env.RSS_CATALOG_INDEXERS || "").trim()),
   rssUpdateIntervalMinutes: parseInt(process.env.RSS_UPDATE_INTERVAL_MINUTES || "30", 10),
   // Feature flags para a instância pública. Em produção não expõem funcionalidades
   // experimentais (qBittorrent / Catálogo RSS) a menos que explicitamente ativadas.
@@ -36,9 +39,12 @@ const ENV = {
   enableQbit:   process.env.ENABLE_QBITTORRENT != null
     ? String(process.env.ENABLE_QBITTORRENT).toLowerCase() !== "false"
     : qbitEnvConfigured(),
-  enableRssCatalog: process.env.ENABLE_RSS_CATALOG != null
-    ? String(process.env.ENABLE_RSS_CATALOG).toLowerCase() !== "false"
-    : !!((process.env.RSS_CATALOG_INDEXERS || "").trim()),
+  // Habilita/desabilita o modo debrid via StremThru. Default: habilitado (para
+  // preservar configs existentes). Defina ENABLE_STREMTHRU=false para ocultar na
+  // UI e recusar stConfig no backend (como ENABLE_QBITTORRENT).
+  enableStremThru: process.env.ENABLE_STREMTHRU != null
+    ? String(process.env.ENABLE_STREMTHRU).toLowerCase() !== "false"
+    : true,
   qbitConfig: {
     url:      (process.env.QBIT_URL || "").trim().replace(/\/+$/, ""),
     // Aceita tanto QBIT_USER/QBIT_PASS (histórico do projeto) quanto

@@ -18,6 +18,13 @@ router.post("/api/config", async (req, res) => {
     if (ENV.accessToken && prefs.token !== ENV.accessToken && getRequestAccessToken(req) !== ENV.accessToken) {
       return res.status(403).json({ ok: false, error: "Acesso negado" });
     }
+    // P2P desativado na instância e sem fonte (debrid nativo ou StremThru):
+    // não gera um manifest que não teria como entregar streams.
+    const hasNative = !!(prefs.debridConfig && (prefs.debridConfig.torboxKey || prefs.debridConfig.rdKey));
+    const hasST = !!prefs.stConfig;
+    if (!ENV.enablePureP2P && !hasNative && !hasST) {
+      return res.status(400).json({ ok: false, error: "P2P desabilitado nesta instância. Configure debrid nativo (ou StremThru) para gerar o manifest." });
+    }
     const userConfig = await saveStoredConfig(prefs);
     const normalizedPrefs = normalizePrefs(prefs);
 
@@ -87,6 +94,8 @@ router.get("/api/env", async (_, res) => {
     // Feature flags expostas para a UI decidir o que exibir/ocultar.
     enableQbit: ENV.enableQbit,
     enableRssCatalog: ENV.enableRssCatalog,
+    enableStremThru: ENV.enableStremThru,
+    enablePureP2P: ENV.enablePureP2P,
     redisOk,
     port: ENV.port,
     accessProtected: !!ENV.accessToken,

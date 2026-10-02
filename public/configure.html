@@ -681,6 +681,29 @@ function applyFeatureFlags(env) {
       rssBtn.closest('.tg-row').style.display = 'none';
     }
   }
+  // StremThru desabilitado na instância → oculta a opção (UI) e desmarca.
+  if (env.enableStremThru === false) {
+    const stLabel = document.getElementById('useStremThru')?.closest('label');
+    if (stLabel) stLabel.style.display = 'none';
+    const stHint = document.querySelector('#sec-debrid .info[style*="margin-left"]');
+    // oculta o aviso da opção StremThru quando houver (pano com sufixo Diferente)
+    const stPanel = document.getElementById('stremThruConfig');
+    if (stPanel) stPanel.style.display = 'none';
+    if (document.getElementById('useStremThru').checked) document.getElementById('useStremThru').checked = false;
+  }
+  // P2P desativado na instância → exibe aviso e exige debrid p/ gerar manifest.
+  state.p2pDisabled = env.enablePureP2P === false;
+  if (state.p2pDisabled) {
+    let banner = document.getElementById('p2p-warn');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'p2p-warn';
+      banner.style.cssText = 'background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:#f59e0b;border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:12px;line-height:1.6';
+      banner.innerHTML = '⚠️ P2P desabilitado nesta instância. Para gerar o manifest, configure <strong>Debrid Nativo</strong> (ou StremThru se habilitado).';
+      const secDebrid = document.getElementById('sec-debrid');
+      secDebrid.insertBefore(banner, secDebrid.firstChild);
+    }
+  }
 }
 
 // ── Indexers ──────────────────────────────────────────────────────
@@ -844,6 +867,12 @@ function buildPrefs() {
     prefs.stConfig = { url: document.getElementById('stUrl').value.trim().replace(/\/+$/,''), stores };
   }
 
+  // P2P desabilitado no servidor e sem fonte de debrid configurada:
+  // não permite gerar um manifest que não entregaria nada.
+  if (state.p2pDisabled && !isNative && !isStremThru) {
+    throw new Error('p2p_disabled_requires_debrid');
+  }
+
   // Nome do addon
   if (isNative && prefs.debridConfig) {
     const nameMap = { torbox: 'ProwJack [TB]', realdebrid: 'ProwJack [RD]', dual: 'ProwJack' };
@@ -890,6 +919,7 @@ async function generate(openManifest = false) {
   } catch (err) {
     if (err.message === 'native_keys_missing') { toast('ERRO: Configure ao menos uma chave debrid!', 'err'); document.getElementById('tbKey').focus(); }
     else if (err.message === 'stToken1_missing') { toast('ERRO: Token do Serviço 1 é obrigatório!', 'err'); document.getElementById('stToken1').focus(); }
+    else if (err.message === 'p2p_disabled_requires_debrid') { toast('ERRO: P2P desabilitado nesta instância. Configure Debrid Nativo (ou StremThru).', 'err'); document.getElementById('useNativeDebrid').focus(); }
     else { toast('Erro: ' + err.message, 'err'); }
     return null;
   }
